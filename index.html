@@ -195,31 +195,27 @@
     .trend-page {
       background: #fff;
       padding: 44px 52px 44px;
-      display: flex; flex-direction: column;
     }
     .charts {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr 1fr;   /* 两行等高，撑满剩余空间 */
+      grid-template-rows: auto auto;
       gap: 14px;
-      flex: 1; min-height: 0;
+      flex: 1;
     }
     .chart-box {
       background: #f9fafb; border-radius: 14px;
       padding: 20px 22px;
       border: 1px solid #e5e7eb;
-      display: flex; flex-direction: column;
-      min-height: 0;
     }
     .chart-box.wide { grid-column: 1 / -1; }
     .chart-title {
       font-size: 10px; font-weight: 700;
       letter-spacing: 1.5px; color: #9ca3af;
       text-transform: uppercase; margin-bottom: 12px;
-      flex-shrink: 0;
     }
-    /* canvas 自动填满 chart-box 剩余高度 */
-    .chart-box canvas { flex: 1; min-height: 0; width: 100% !important; }
+    .chart-box canvas      { max-height: 120px; }
+    .chart-box.wide canvas { max-height: 140px; }
 
     /* ── Mobile ── */
     @media (max-width: 700px) {
@@ -230,18 +226,9 @@
       .cards-col  { padding: 20px 24px 28px; }
       .card { padding: 20px 18px; }
       .card-value { font-size: 40px; }
-      /* 手机端 trend 页允许内部滚动，图表有固定最小高度 */
-      .trend-page {
-        height: auto; min-height: 100vh; overflow-y: auto;
-        padding: 28px 24px 40px;
-      }
-      .charts {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto;
-        flex: unset;
-      }
+      .trend-page { padding: 28px 24px 28px; }
+      .charts { grid-template-columns: 1fr; }
       .chart-box.wide { grid-column: 1; }
-      .chart-box canvas { flex: none; height: 180px; min-height: unset; }
     }
   </style>
 </head>
