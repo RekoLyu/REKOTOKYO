@@ -6,6 +6,11 @@
   <title>REKOTOKYO — 细胞培养箱监控</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <style>
     html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -491,6 +496,11 @@
       C.co2.data.labels  = labels; C.co2.data.datasets[0].data  = buf.map(x => x.co2);      C.co2.update('none');
     } catch(e) { console.error(e); }
   });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/REKOTOKYO/sw.js');
+  }
 </script>
 </body>
 </html>
