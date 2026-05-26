@@ -214,8 +214,9 @@
       letter-spacing: 1.5px; color: #9ca3af;
       text-transform: uppercase; margin-bottom: 12px;
     }
-    .chart-box canvas      { max-height: 120px; }
-    .chart-box.wide canvas { max-height: 140px; }
+    /* wrapper 控制高度，canvas 填满 wrapper（Chart.js 推荐方式） */
+    .chart-wrap      { position: relative; height: 120px; }
+    .chart-box.wide .chart-wrap { height: 140px; }
 
     /* ── Mobile ── */
     @media (max-width: 700px) {
@@ -372,15 +373,15 @@
   <div class="charts">
     <div class="chart-box wide">
       <div class="chart-title">Temperature (°C)</div>
-      <canvas id="chart-temp"></canvas>
+      <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
     </div>
     <div class="chart-box">
       <div class="chart-title">Humidity (%)</div>
-      <canvas id="chart-hum"></canvas>
+      <div class="chart-wrap"><canvas id="chart-hum"></canvas></div>
     </div>
     <div class="chart-box">
       <div class="chart-title">CO₂ (ppm)</div>
-      <canvas id="chart-co2"></canvas>
+      <div class="chart-wrap"><canvas id="chart-co2"></canvas></div>
     </div>
   </div>
 </div>
