@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+
+  <!-- 背景 -->
+  <rect width="512" height="512" rx="96" fill="#0a0a0a"/>
+
+  <!-- 科技格线（极暗） -->
+  <line x1="0"   y1="171" x2="512" y2="171" stroke="#161616" stroke-width="1"/>
+  <line x1="0"   y1="341" x2="512" y2="341" stroke="#161616" stroke-width="1"/>
+  <line x1="171" y1="0"   x2="171" y2="512" stroke="#161616" stroke-width="1"/>
+  <line x1="341" y1="0"   x2="341" y2="512" stroke="#161616" stroke-width="1"/>
+
+  <!-- 和風：禅円（ensō）风格同心圆，偏置不对称构图 -->
+  <circle cx="290" cy="230" r="215" fill="none" stroke="#1a2535" stroke-width="1.2"/>
+  <circle cx="290" cy="230" r="158" fill="none" stroke="#1a2535" stroke-width="0.7"/>
+
+  <!-- 和風：角隅括号装饰 -->
+  <path d="M 445 62 L 474 62 L 474 91"  fill="none" stroke="#1e3a5f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 38 421 L 38 450 L 67 450"  fill="none" stroke="#1e3a5f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- R（原样保留） -->
+  <text x="80" y="370" font-family="-apple-system, BlinkMacSystemFont, sans-serif"
+        font-size="320" font-weight="900" fill="#ffffff">R</text>
+
+  <!-- 蓝色下划线（原样保留） -->
+  <rect x="80" y="390" width="200" height="10" rx="5" fill="#3b82f6"/>
+
+  <!-- 花火（菊花火风格）：曲线火花，非直线放射 -->
+  <!-- 外层光晕 -->
+  <circle cx="400" cy="140" r="46" fill="none" stroke="#3b82f6" stroke-width="0.8" opacity="0.2"/>
+  <!-- 中心光点 -->
+  <circle cx="400" cy="140" r="5"  fill="#93c5fd"/>
+  <circle cx="400" cy="140" r="10" fill="#3b82f6" opacity="0.3"/>
+
+  <!-- 10条弯曲火花：控制点偏转25°，形成一致的旋转感，避免直线放射 -->
+  <path d="M400,140 Q420,149 438,140" stroke="#60a5fa" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q411,159 431,162" stroke="#3b82f6" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q397,162 412,176" stroke="#60a5fa" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q385,156 388,176" stroke="#3b82f6" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q378,144 369,162" stroke="#60a5fa" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q380,131 362,140" stroke="#3b82f6" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q389,121 369,118" stroke="#60a5fa" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q403,118 388,104" stroke="#3b82f6" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q415,124 412,104" stroke="#60a5fa" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M400,140 Q422,136 431,118" stroke="#3b82f6" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+
+  <!-- 火花尖端小点 -->
+  <circle cx="438" cy="140" r="2.2" fill="#93c5fd"/>
+  <circle cx="431" cy="162" r="2.2" fill="#93c5fd"/>
+  <circle cx="412" cy="176" r="2.2" fill="#93c5fd"/>
+  <circle cx="388" cy="176" r="2.2" fill="#93c5fd"/>
+  <circle cx="369" cy="162" r="2.2" fill="#93c5fd"/>
+  <circle cx="362" cy="140" r="2.2" fill="#93c5fd"/>
+  <circle cx="369" cy="118" r="2.2" fill="#93c5fd"/>
+  <circle cx="388" cy="104" r="2.2" fill="#93c5fd"/>
+  <circle cx="412" cy="104" r="2.2" fill="#93c5fd"/>
+  <circle cx="431" cy="118" r="2.2" fill="#93c5fd"/>
+
+  <!-- 科技感：右下角星座连线 -->
+  <circle cx="390" cy="388" r="3.5" fill="#3b82f6" opacity="0.7"/>
+  <circle cx="434" cy="355" r="2.5" fill="#60a5fa" opacity="0.5"/>
+  <circle cx="462" cy="402" r="3"   fill="#3b82f6" opacity="0.5"/>
+  <line x1="390" y1="388" x2="434" y2="355" stroke="#3b82f6" stroke-width="1" opacity="0.35"/>
+  <line x1="434" y1="355" x2="462" y2="402" stroke="#3b82f6" stroke-width="1" opacity="0.35"/>
+
+</svg>
