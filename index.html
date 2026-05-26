@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>细胞培养箱监控</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2a2d3a;
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 8px #f59e0b; animation: pulse 2s infinite; flex-shrink: 0; }
+    .dot.connected    { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .dot.disconnected { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .header-text h1 { font-size: 16px; font-weight: 600; }
+    .header-text .sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+    .header-right { margin-left: auto; text-align: right; }
+    .header-right .org { font-size: 22px; font-weight: 800; color: #a78bfa; letter-spacing: 3px; text-transform: uppercase; }
+    .header-right .time { font-size: 11px; color: #6b7280; margin-top: 4px; letter-spacing: .5px; }
+
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 20px 32px 8px; }
+    .card { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px; padding: 18px 20px; }
+    .card .label { font-size: 11px; color: #6b7280; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .6px; }
+    .card .value { font-size: 30px; font-weight: 700; line-height: 1; }
+    .card .unit  { font-size: 13px; color: #9ca3af; margin-left: 3px; font-weight: 400; }
+    .card .badge { display: inline-block; margin-top: 10px; font-size: 11px; padding: 3px 10px; border-radius: 999px; }
+    .heating { background: #1e3a5f; color: #60a5fa; }
+    .stop    { background: #1a3028; color: #4ade80; }
+
+    .charts { padding: 12px 32px 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .chart-box { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px; padding: 18px 20px; }
+    .chart-box.wide { grid-column: 1 / -1; }
+    .chart-box h2 { font-size: 12px; color: #9ca3af; margin-bottom: 14px; text-transform: uppercase; letter-spacing: .5px; }
+    canvas { max-height: 150px; }
+    .chart-box.wide canvas { max-height: 180px; }
+
+    #status { text-align: center; padding: 60px; color: #6b7280; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="dot" id="dot"></div>
+  <div class="header-text">
+    <h1>细胞培养箱实时监控系统</h1>
+    <div class="sub" id="conn-sub">正在连接到 EMQX 杭州服务器...</div>
+  </div>
+  <div class="header-right">
+    <div class="org">REKOTOKYO</div>
+    <div class="time" id="clock">--</div>
+  </div>
+</header>
+
+<div id="status">正在连接到 EMQX 杭州服务器...</div>
+
+<div id="main" style="display:none">
+  <div class="cards">
+    <div class="card">
+      <div class="label">温度 · GT1050</div>
+      <div class="value" id="val-temp">--<span class="unit">°C</span></div>
+      <span class="badge" id="badge-state">--</span>
+    </div>
+    <div class="card">
+      <div class="label">湿度 · SHT45</div>
+      <div class="value" id="val-hum">--<span class="unit">%</span></div>
+    </div>
+    <div class="card">
+      <div class="label">CO₂ · MH-Z19C</div>
+      <div class="value" id="val-co2">--<span class="unit">ppm</span></div>
+    </div>
+    <div class="card">
+      <div class="label">加热器 PWM</div>
+      <div class="value" id="val-pwm">--<span class="unit">%</span></div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-box wide">
+      <h2>温度趋势 (°C)</h2>
+      <canvas id="chart-temp"></canvas>
+    </div>
+    <div class="chart-box">
+      <h2>湿度趋势 (%)</h2>
+      <canvas id="chart-hum"></canvas>
+    </div>
+    <div class="chart-box">
+      <h2>CO₂ 趋势 (ppm)</h2>
+      <canvas id="chart-co2"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+  function updateClock() {
+    document.getElementById('clock').textContent = new Date().toLocaleString('zh-CN');
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  function makeChart(id, color, unit, decimals) {
+    return new Chart(document.getElementById(id), {
+      type: 'line',
+      data: { labels: [], datasets: [{ data: [], borderColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: color, tension: 0.3, fill: false }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1a1d27', borderColor: '#2a2d3a', borderWidth: 1,
+            titleColor: '#9ca3af', bodyColor: '#e0e0e0', padding: 10,
+            callbacks: {
+              title: (items) => items[0].label,
+              label: (ctx) => ` ${ctx.parsed.y.toFixed(decimals)} ${unit}`
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#6b7280', maxTicksLimit: 8 }, grid: { color: '#2a2d3a' } },
+          y: { ticks: { color: '#6b7280' }, grid: { color: '#2a2d3a' } }
+        }
+      }
+    });
+  }
+
+  const charts = {
+    temp: makeChart('chart-temp', '#60a5fa', '°C',  2),
+    hum:  makeChart('chart-hum',  '#34d399', '%',   1),
+    co2:  makeChart('chart-co2',  '#f97316', 'ppm', 0),
+  };
+
+  const historyBuf = [];
+  const MAX_HISTORY = 120;
+
+  function setDot(state) {
+    document.getElementById('dot').className = 'dot ' + state;
+  }
+
+  // ── MQTT over WebSocket（直连 EMQX 杭州，无需局域网）────────
+  const client = mqtt.connect('wss://t9bf510a.ala.cn-hangzhou.emqxsl.cn:8084/mqtt', {
+    clientId:        'web_' + Math.random().toString(16).substr(2, 8),
+    username:        'REKOLYU',
+    password:        'Llh041214',
+    reconnectPeriod: 3000,
+    connectTimeout:  10000,
+  });
+
+  client.on('connect', () => {
+    setDot('connected');
+    document.getElementById('conn-sub').textContent = 'ESP32-S3 · GT1050 · SHT45 · MH-Z19C · EMQX · InfluxDB';
+    client.subscribe('esp32s3/sensor_data');
+  });
+
+  client.on('reconnect', () => {
+    setDot('');
+    document.getElementById('conn-sub').textContent = '正在重新连接...';
+  });
+
+  client.on('error', (err) => {
+    setDot('disconnected');
+    document.getElementById('conn-sub').textContent = '连接失败：' + err.message;
+    document.getElementById('status').textContent = '无法连接到 EMQX，请检查网络';
+    document.getElementById('status').style.display = 'block';
+    document.getElementById('main').style.display = 'none';
+  });
+
+  client.on('message', (topic, payload) => {
+    try {
+      const data = JSON.parse(payload.toString());
+      data.time = new Date().toLocaleTimeString('zh-CN');
+
+      historyBuf.push(data);
+      if (historyBuf.length > MAX_HISTORY) historyBuf.shift();
+
+      document.getElementById('status').style.display = 'none';
+      document.getElementById('main').style.display   = 'block';
+
+      document.getElementById('val-temp').innerHTML = `${data.temp?.toFixed(2)}<span class="unit">°C</span>`;
+      document.getElementById('val-hum').innerHTML  = `${data.humidity?.toFixed(1)}<span class="unit">%</span>`;
+      document.getElementById('val-co2').innerHTML  = `${data.co2}<span class="unit">ppm</span>`;
+      document.getElementById('val-pwm').innerHTML  = `${data.pwm}<span class="unit">%</span>`;
+
+      const badge = document.getElementById('badge-state');
+      badge.textContent = data.state === 'HEATING' ? '🔵 加热中' : '🟢 维持中';
+      badge.className   = 'badge ' + (data.state === 'HEATING' ? 'heating' : 'stop');
+
+      const labels = historyBuf.map(d => d.time);
+      charts.temp.data.labels = labels; charts.temp.data.datasets[0].data = historyBuf.map(d => d.temp);    charts.temp.update('none');
+      charts.hum.data.labels  = labels; charts.hum.data.datasets[0].data  = historyBuf.map(d => d.humidity); charts.hum.update('none');
+      charts.co2.data.labels  = labels; charts.co2.data.datasets[0].data  = historyBuf.map(d => d.co2);      charts.co2.update('none');
+
+    } catch(e) {
+      console.error('消息解析失败', e);
+    }
+  });
+</script>
+</body>
+</html>
