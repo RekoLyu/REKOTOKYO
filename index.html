@@ -1,207 +1,482 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>细胞培养箱监控</title>
+  <title>REKOTOKYO — 细胞培养箱监控</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
   <style>
+    html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
-
-    header {
-      background: #1a1d27;
-      border-bottom: 1px solid #2a2d3a;
-      padding: 14px 32px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #0a0a0a;
+      overflow-x: hidden;
     }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 8px #f59e0b; animation: pulse 2s infinite; flex-shrink: 0; }
-    .dot.connected    { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
-    .dot.disconnected { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: none; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-    .header-text h1 { font-size: 16px; font-weight: 600; }
-    .header-text .sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
-    .header-right { margin-left: auto; text-align: right; }
-    .header-right .org { font-size: 22px; font-weight: 800; color: #a78bfa; letter-spacing: 3px; text-transform: uppercase; }
-    .header-right .time { font-size: 11px; color: #6b7280; margin-top: 4px; letter-spacing: .5px; }
 
-    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 20px 32px 8px; }
-    .card { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px; padding: 18px 20px; }
-    .card .label { font-size: 11px; color: #6b7280; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .6px; }
-    .card .value { font-size: 30px; font-weight: 700; line-height: 1; }
-    .card .unit  { font-size: 13px; color: #9ca3af; margin-left: 3px; font-weight: 400; }
-    .card .badge { display: inline-block; margin-top: 10px; font-size: 11px; padding: 3px 10px; border-radius: 999px; }
-    .heating { background: #1e3a5f; color: #60a5fa; }
-    .stop    { background: #1a3028; color: #4ade80; }
+    /* ── Loading overlay ── */
+    #overlay {
+      position: fixed; inset: 0; background: #0a0a0a;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 300; transition: opacity .6s;
+    }
+    #overlay .o-brand { color: #fff; font-size: 20px; font-weight: 900; letter-spacing: 7px; margin-bottom: 12px; }
+    #overlay .o-text  { color: #374151; font-size: 10px; letter-spacing: 4px; }
 
-    .charts { padding: 12px 32px 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .chart-box { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px; padding: 18px 20px; }
+    /* ── Shared page shell ── */
+    .page {
+      height: 100vh; min-height: 560px;
+      scroll-snap-align: start;
+      overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Page 1: Hero ── */
+    .hero {
+      background: #0a0a0a;
+      padding: 36px 52px 40px;
+      position: relative;
+    }
+    .hero::before {
+      content: ''; position: absolute;
+      top: -100px; right: -60px;
+      width: 420px; height: 420px;
+      border: 1px solid #1f2937; border-radius: 50%;
+      pointer-events: none;
+    }
+    .hero::after {
+      content: ''; position: absolute;
+      top: 60px; right: 60px;
+      width: 260px; height: 260px;
+      border: 1px solid #111827; border-radius: 50%;
+      pointer-events: none;
+    }
+    .hero-nav {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      position: relative; z-index: 1;
+    }
+    .brand { font-size: 11px; font-weight: 700; letter-spacing: 5px; color: #4b5563; text-transform: uppercase; }
+    .conn-row { display: flex; align-items: center; gap: 7px; justify-content: flex-end; }
+    .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #f59e0b; box-shadow: 0 0 7px #f59e0b;
+      animation: blink 2s infinite; flex-shrink: 0;
+    }
+    .dot.connected    { background: #22c55e; box-shadow: 0 0 7px #22c55e; }
+    .dot.disconnected { background: #ef4444; box-shadow: 0 0 7px #ef4444; animation: none; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .conn-label { font-size: 11px; color: #6b7280; }
+    .clock      { font-size: 11px; color: #374151; margin-top: 5px; text-align: right; }
+
+    .hero-body {
+      flex: 1; display: flex; flex-direction: column; justify-content: center;
+      position: relative; z-index: 1;
+    }
+    .tagline {
+      font-size: clamp(38px, 6vw, 72px);
+      font-weight: 900; color: #fff;
+      line-height: 1.15; letter-spacing: -1.5px;
+      margin-bottom: 28px;
+    }
+    .tagline .accent { color: #3b82f6; }
+    .hero-copy-main {
+      font-size: clamp(15px, 2vw, 19px);
+      font-weight: 600; color: #d1d5db;
+      margin-bottom: 10px;
+    }
+    .hero-copy-sub {
+      font-size: 13px; color: #6b7280;
+      letter-spacing: .4px; line-height: 1.7; max-width: 480px;
+    }
+
+    .scroll-hint {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 10px; color: #374151;
+      font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+      position: relative; z-index: 1; cursor: pointer;
+      transition: color .2s;
+    }
+    .scroll-hint:hover { color: #6b7280; }
+    .scroll-line {
+      width: 1px; height: 44px;
+      background: linear-gradient(to bottom, #374151, transparent);
+      animation: lineDown 2s ease-in-out infinite;
+    }
+    @keyframes lineDown {
+      0%   { transform: scaleY(0); transform-origin: top; opacity: 1; }
+      50%  { transform: scaleY(1); transform-origin: top; opacity: 1; }
+      100% { transform: scaleY(1); transform-origin: bottom; opacity: 0; }
+    }
+
+    /* ── Page 2: Live Data ── */
+    .live-page {
+      background: #f2f2ef;
+      display: grid;
+      grid-template-columns: 2fr 3fr;
+    }
+    /* decoration column */
+    .deco-col {
+      padding: 44px 32px 44px 52px;
+      display: flex; flex-direction: column;
+      border-right: 1px solid #e5e7eb;
+      position: relative; overflow: hidden;
+    }
+    .deco-top-label {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 3px; color: #9ca3af;
+      text-transform: uppercase;
+      position: relative; z-index: 2;
+    }
+    .tower-wrap {
+      flex: 1; display: flex;
+      align-items: center; justify-content: center;
+      position: relative; z-index: 2;
+    }
+    .tower-svg { height: 68%; max-height: 380px; width: auto; }
+    .cells-bg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none; z-index: 1;
+    }
+    .deco-bottom {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 2.5px; color: #c8c8c4;
+      text-transform: uppercase;
+      position: relative; z-index: 2;
+    }
+    /* cards column */
+    .cards-col {
+      padding: 44px 52px 44px 40px;
+      display: flex; flex-direction: column;
+      justify-content: center;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 14px;
+      flex: 1;
+    }
+    .card {
+      background: #fff; border-radius: 16px;
+      padding: 32px 36px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 1px 4px rgba(0,0,0,.05);
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .card-label {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.5px; color: #9ca3af;
+      text-transform: uppercase; margin-bottom: 16px;
+    }
+    .card-value {
+      font-size: clamp(48px, 5.5vw, 80px);
+      font-weight: 900; line-height: 1; letter-spacing: -3px;
+      color: #0a0a0a;
+    }
+    .card-unit { font-size: 20px; font-weight: 400; color: #9ca3af; margin-left: 4px; letter-spacing: 0; }
+    .badge {
+      display: inline-block; margin-top: 16px;
+      font-size: 11px; font-weight: 600;
+      padding: 5px 14px; border-radius: 999px;
+      align-self: flex-start;
+    }
+    .heating { background: #dbeafe; color: #1d4ed8; }
+    .stop    { background: #dcfce7; color: #15803d; }
+
+    /* ── Page 3: Trends ── */
+    .trend-page {
+      background: #fff;
+      padding: 44px 52px 44px;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 14px;
+      flex: 1;
+    }
+    .chart-box {
+      background: #f9fafb; border-radius: 14px;
+      padding: 20px 22px;
+      border: 1px solid #e5e7eb;
+    }
     .chart-box.wide { grid-column: 1 / -1; }
-    .chart-box h2 { font-size: 12px; color: #9ca3af; margin-bottom: 14px; text-transform: uppercase; letter-spacing: .5px; }
-    canvas { max-height: 150px; }
-    .chart-box.wide canvas { max-height: 180px; }
+    .chart-title {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.5px; color: #9ca3af;
+      text-transform: uppercase; margin-bottom: 12px;
+    }
+    .chart-box canvas      { max-height: 120px; }
+    .chart-box.wide canvas { max-height: 140px; }
 
-    #status { text-align: center; padding: 60px; color: #6b7280; font-size: 14px; }
+    /* ── Mobile ── */
+    @media (max-width: 700px) {
+      .hero      { padding: 28px 24px 28px; }
+      .trend-page { padding: 28px 24px 28px; }
+      .live-page { display: flex; flex-direction: column; }
+      .deco-col  { padding: 28px 24px 20px; border-right: none; border-bottom: 1px solid #e5e7eb; min-height: unset; }
+      .tower-wrap { display: none; }
+      .cards-col  { padding: 20px 24px 28px; }
+      .charts { grid-template-columns: 1fr; }
+      .chart-box.wide { grid-column: 1; }
+      .card { padding: 20px 18px; }
+      .card-value { font-size: 40px; }
+    }
   </style>
 </head>
 <body>
 
-<header>
-  <div class="dot" id="dot"></div>
-  <div class="header-text">
-    <h1>细胞培养箱实时监控系统</h1>
-    <div class="sub" id="conn-sub">正在连接到 EMQX 杭州服务器...</div>
-  </div>
-  <div class="header-right">
-    <div class="org">REKOTOKYO</div>
-    <div class="time" id="clock">--</div>
-  </div>
-</header>
+<!-- Loading -->
+<div id="overlay">
+  <div class="o-brand">REKOTOKYO</div>
+  <div class="o-text" id="o-text">CONNECTING...</div>
+</div>
 
-<div id="status">正在连接到 EMQX 杭州服务器...</div>
+<!-- Page 1: Hero -->
+<div class="page hero">
+  <nav class="hero-nav">
+    <div class="brand">REKOTOKYO</div>
+    <div>
+      <div class="conn-row">
+        <span class="dot" id="dot"></span>
+        <span class="conn-label" id="conn-label">接続中...</span>
+      </div>
+      <div class="clock" id="clock">--</div>
+    </div>
+  </nav>
 
-<div id="main" style="display:none">
-  <div class="cards">
-    <div class="card">
-      <div class="label">温度 · GT1050</div>
-      <div class="value" id="val-temp">--<span class="unit">°C</span></div>
-      <span class="badge" id="badge-state">--</span>
+  <div class="hero-body">
+    <div class="tagline">
+      技術と共に、つくる、<span class="accent">変える</span>、<br>進化する。
     </div>
-    <div class="card">
-      <div class="label">湿度 · SHT45</div>
-      <div class="value" id="val-hum">--<span class="unit">%</span></div>
-    </div>
-    <div class="card">
-      <div class="label">CO₂ · MH-Z19C</div>
-      <div class="value" id="val-co2">--<span class="unit">ppm</span></div>
-    </div>
-    <div class="card">
-      <div class="label">加热器 PWM</div>
-      <div class="value" id="val-pwm">--<span class="unit">%</span></div>
+    <div class="hero-copy-main">Every cell, every moment.</div>
+    <div class="hero-copy-sub">
+      Real-time precision monitoring for life science research.<br>
+      Engineered to protect what matters most.
     </div>
   </div>
 
+  <div class="scroll-hint" onclick="document.getElementById('live').scrollIntoView()">
+    <span>SCROLL</span>
+    <div class="scroll-line"></div>
+  </div>
+</div>
+
+<!-- Page 2: Live Data -->
+<div class="page live-page" id="live">
+
+  <!-- Left: decoration -->
+  <div class="deco-col">
+
+    <!-- Floating cell illustrations -->
+    <svg class="cells-bg" viewBox="0 0 400 700" preserveAspectRatio="xMidYMid slice" fill="none">
+      <!-- Cell A: upper area -->
+      <circle cx="90"  cy="140" r="62"  stroke="#ddddd9" stroke-width="1.2"/>
+      <circle cx="80"  cy="128" r="22"  stroke="#ddddd9" stroke-width="0.9"/>
+      <ellipse cx="105" cy="155" rx="12" ry="8"  stroke="#e3e3df" stroke-width="0.7"/>
+      <ellipse cx="76"  cy="160" rx="7"  ry="11" stroke="#e3e3df" stroke-width="0.7"/>
+      <circle cx="95"  cy="120" r="4"   stroke="#e3e3df" stroke-width="0.6"/>
+      <!-- Cell B: lower right, partially cropped -->
+      <circle cx="375" cy="600" r="105" stroke="#ddddd9" stroke-width="1.2"/>
+      <circle cx="358" cy="582" r="38"  stroke="#ddddd9" stroke-width="0.9"/>
+      <ellipse cx="395" cy="620" rx="18" ry="13" stroke="#e3e3df" stroke-width="0.7"/>
+      <ellipse cx="355" cy="625" rx="10" ry="16" stroke="#e3e3df" stroke-width="0.7"/>
+      <!-- Cell C: right side, small -->
+      <circle cx="355" cy="230" r="40"  stroke="#e3e3df" stroke-width="1"/>
+      <circle cx="346" cy="222" r="14"  stroke="#e3e3df" stroke-width="0.8"/>
+      <ellipse cx="366" cy="240" rx="8"  ry="5"  stroke="#e8e8e4" stroke-width="0.6"/>
+      <!-- Cell D: tiny, lower left -->
+      <circle cx="35"  cy="560" r="32"  stroke="#e3e3df" stroke-width="0.9"/>
+      <circle cx="28"  cy="553" r="11"  stroke="#e3e3df" stroke-width="0.7"/>
+      <!-- Decorative dots -->
+      <circle cx="180" cy="55"  r="3" fill="#e8e8e4"/>
+      <circle cx="210" cy="70"  r="2" fill="#e8e8e4"/>
+      <circle cx="160" cy="75"  r="1.5" fill="#e8e8e4"/>
+      <circle cx="300" cy="420" r="2.5" fill="#e8e8e4"/>
+      <circle cx="50"  cy="380" r="2" fill="#e8e8e4"/>
+    </svg>
+
+    <div class="deco-top-label">Live · Sensor Data</div>
+
+    <!-- Tokyo Tower SVG -->
+    <div class="tower-wrap">
+      <svg class="tower-svg" viewBox="0 0 80 215" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Outer base legs -->
+        <line x1="1"  y1="215" x2="25" y2="133" stroke="#c0c0bc" stroke-width="1.7"/>
+        <line x1="79" y1="215" x2="55" y2="133" stroke="#c0c0bc" stroke-width="1.7"/>
+        <!-- Inner base legs -->
+        <line x1="19" y1="215" x2="29" y2="133" stroke="#c0c0bc" stroke-width="1.2"/>
+        <line x1="61" y1="215" x2="51" y2="133" stroke="#c0c0bc" stroke-width="1.2"/>
+        <!-- Upper section legs -->
+        <line x1="25" y1="133" x2="36" y2="50"  stroke="#c0c0bc" stroke-width="1.4"/>
+        <line x1="55" y1="133" x2="44" y2="50"  stroke="#c0c0bc" stroke-width="1.4"/>
+        <!-- Antenna -->
+        <line x1="40" y1="50"  x2="40" y2="0"   stroke="#c0c0bc" stroke-width="1"/>
+        <!-- Small antenna platform -->
+        <line x1="37" y1="18"  x2="43" y2="18"  stroke="#c8c8c4" stroke-width="0.9"/>
+        <!-- Cross braces – bottom -->
+        <line x1="4"  y1="196" x2="76" y2="196" stroke="#d0d0cc" stroke-width="0.75"/>
+        <line x1="8"  y1="178" x2="72" y2="178" stroke="#d0d0cc" stroke-width="0.75"/>
+        <line x1="13" y1="160" x2="67" y2="160" stroke="#d0d0cc" stroke-width="0.75"/>
+        <!-- First platform -->
+        <line x1="23" y1="133" x2="57" y2="133" stroke="#bcbcb8" stroke-width="1.5"/>
+        <!-- Cross braces – upper -->
+        <line x1="27" y1="115" x2="53" y2="115" stroke="#d0d0cc" stroke-width="0.75"/>
+        <line x1="29" y1="98"  x2="51" y2="98"  stroke="#d0d0cc" stroke-width="0.75"/>
+        <line x1="31" y1="82"  x2="49" y2="82"  stroke="#d0d0cc" stroke-width="0.75"/>
+        <!-- Second platform -->
+        <line x1="33" y1="66"  x2="47" y2="66"  stroke="#bcbcb8" stroke-width="1.3"/>
+        <line x1="36" y1="52"  x2="44" y2="52"  stroke="#d0d0cc" stroke-width="0.8"/>
+      </svg>
+    </div>
+
+    <div class="deco-bottom">東京 · ライフサイエンス</div>
+  </div>
+
+  <!-- Right: Cards -->
+  <div class="cards-col">
+    <div class="cards">
+      <div class="card">
+        <div class="card-label">温度 · GT1050</div>
+        <div class="card-value" id="val-temp">--<span class="card-unit">°C</span></div>
+        <span class="badge" id="badge-state">--</span>
+      </div>
+      <div class="card">
+        <div class="card-label">湿度 · SHT45</div>
+        <div class="card-value" id="val-hum">--<span class="card-unit">%</span></div>
+      </div>
+      <div class="card">
+        <div class="card-label">CO₂ · MH-Z19C</div>
+        <div class="card-value" id="val-co2">--<span class="card-unit">ppm</span></div>
+      </div>
+      <div class="card">
+        <div class="card-label">加热器 PWM</div>
+        <div class="card-value" id="val-pwm">--<span class="card-unit">%</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Page 3: Trends -->
+<div class="page trend-page" id="trend">
+  <div class="page-label">Trend Analysis</div>
   <div class="charts">
     <div class="chart-box wide">
-      <h2>温度趋势 (°C)</h2>
+      <div class="chart-title">Temperature (°C)</div>
       <canvas id="chart-temp"></canvas>
     </div>
     <div class="chart-box">
-      <h2>湿度趋势 (%)</h2>
+      <div class="chart-title">Humidity (%)</div>
       <canvas id="chart-hum"></canvas>
     </div>
     <div class="chart-box">
-      <h2>CO₂ 趋势 (ppm)</h2>
+      <div class="chart-title">CO₂ (ppm)</div>
       <canvas id="chart-co2"></canvas>
     </div>
   </div>
 </div>
 
 <script>
-  function updateClock() {
+  setInterval(() => {
     document.getElementById('clock').textContent = new Date().toLocaleString('zh-CN');
-  }
-  updateClock();
-  setInterval(updateClock, 1000);
+  }, 1000);
+  document.getElementById('clock').textContent = new Date().toLocaleString('zh-CN');
 
-  function makeChart(id, color, unit, decimals) {
+  function makeChart(id, color, unit, dec) {
     return new Chart(document.getElementById(id), {
       type: 'line',
-      data: { labels: [], datasets: [{ data: [], borderColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: color, tension: 0.3, fill: false }] },
+      data: {
+        labels: [],
+        datasets: [{
+          data: [], borderColor: color, borderWidth: 2,
+          pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: color,
+          tension: 0.4, fill: { target: 'origin', above: color + '15' }
+        }]
+      },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#1a1d27', borderColor: '#2a2d3a', borderWidth: 1,
-            titleColor: '#9ca3af', bodyColor: '#e0e0e0', padding: 10,
+            backgroundColor: '#0a0a0a', borderColor: '#1f2937', borderWidth: 1,
+            titleColor: '#6b7280', bodyColor: '#fff', padding: 10,
             callbacks: {
-              title: (items) => items[0].label,
-              label: (ctx) => ` ${ctx.parsed.y.toFixed(decimals)} ${unit}`
+              title: i => i[0].label,
+              label: c => ` ${c.parsed.y.toFixed(dec)} ${unit}`
             }
           }
         },
         scales: {
-          x: { ticks: { color: '#6b7280', maxTicksLimit: 8 }, grid: { color: '#2a2d3a' } },
-          y: { ticks: { color: '#6b7280' }, grid: { color: '#2a2d3a' } }
+          x: { ticks: { color: '#9ca3af', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: '#f3f4f6' } },
+          y: { ticks: { color: '#9ca3af', font: { size: 10 } }, grid: { color: '#f3f4f6' } }
         }
       }
     });
   }
 
-  const charts = {
-    temp: makeChart('chart-temp', '#60a5fa', '°C',  2),
-    hum:  makeChart('chart-hum',  '#34d399', '%',   1),
-    co2:  makeChart('chart-co2',  '#f97316', 'ppm', 0),
+  const C = {
+    temp: makeChart('chart-temp', '#2563eb', '°C',  2),
+    hum:  makeChart('chart-hum',  '#059669', '%',   1),
+    co2:  makeChart('chart-co2',  '#d97706', 'ppm', 0),
   };
 
-  const historyBuf = [];
-  const MAX_HISTORY = 120;
+  const buf = [];
 
-  function setDot(state) {
-    document.getElementById('dot').className = 'dot ' + state;
-  }
+  function setDot(cls) { document.getElementById('dot').className = 'dot ' + cls; }
 
-  // ── MQTT over WebSocket（直连 EMQX 杭州，无需局域网）────────
   const client = mqtt.connect('wss://t9bf510a.ala.cn-hangzhou.emqxsl.cn:8084/mqtt', {
-    clientId:        'web_' + Math.random().toString(16).substr(2, 8),
-    username:        'REKOLYU',
-    password:        'Llh041214',
-    reconnectPeriod: 3000,
-    connectTimeout:  10000,
+    clientId: 'web_' + Math.random().toString(16).substr(2, 8),
+    username: 'REKOLYU', password: 'Llh041214',
+    reconnectPeriod: 3000, connectTimeout: 10000,
   });
 
   client.on('connect', () => {
     setDot('connected');
-    document.getElementById('conn-sub').textContent = 'ESP32-S3 · GT1050 · SHT45 · MH-Z19C · EMQX · InfluxDB';
+    document.getElementById('conn-label').textContent = 'Live · EMQX 杭州';
+    document.getElementById('o-text').textContent = 'WAITING FOR DATA...';
     client.subscribe('esp32s3/sensor_data');
   });
 
   client.on('reconnect', () => {
     setDot('');
-    document.getElementById('conn-sub').textContent = '正在重新连接...';
+    document.getElementById('conn-label').textContent = '再接続中...';
   });
 
-  client.on('error', (err) => {
+  client.on('error', () => {
     setDot('disconnected');
-    document.getElementById('conn-sub').textContent = '连接失败：' + err.message;
-    document.getElementById('status').textContent = '无法连接到 EMQX，请检查网络';
-    document.getElementById('status').style.display = 'block';
-    document.getElementById('main').style.display = 'none';
+    document.getElementById('conn-label').textContent = '接続失敗';
+    document.getElementById('o-text').textContent = 'CONNECTION FAILED';
   });
 
-  client.on('message', (topic, payload) => {
+  client.on('message', (_, payload) => {
     try {
-      const data = JSON.parse(payload.toString());
-      data.time = new Date().toLocaleTimeString('zh-CN');
+      const d = JSON.parse(payload.toString());
+      d.time = new Date().toLocaleTimeString('zh-CN');
+      buf.push(d);
+      if (buf.length > 120) buf.shift();
 
-      historyBuf.push(data);
-      if (historyBuf.length > MAX_HISTORY) historyBuf.shift();
+      const ov = document.getElementById('overlay');
+      if (ov) { ov.style.opacity = '0'; setTimeout(() => ov.remove(), 600); }
 
-      document.getElementById('status').style.display = 'none';
-      document.getElementById('main').style.display   = 'block';
+      document.getElementById('val-temp').innerHTML = `${d.temp?.toFixed(2)}<span class="card-unit">°C</span>`;
+      document.getElementById('val-hum').innerHTML  = `${d.humidity?.toFixed(1)}<span class="card-unit">%</span>`;
+      document.getElementById('val-co2').innerHTML  = `${d.co2}<span class="card-unit">ppm</span>`;
+      document.getElementById('val-pwm').innerHTML  = `${d.pwm}<span class="card-unit">%</span>`;
 
-      document.getElementById('val-temp').innerHTML = `${data.temp?.toFixed(2)}<span class="unit">°C</span>`;
-      document.getElementById('val-hum').innerHTML  = `${data.humidity?.toFixed(1)}<span class="unit">%</span>`;
-      document.getElementById('val-co2').innerHTML  = `${data.co2}<span class="unit">ppm</span>`;
-      document.getElementById('val-pwm').innerHTML  = `${data.pwm}<span class="unit">%</span>`;
+      const b = document.getElementById('badge-state');
+      b.textContent = d.state === 'HEATING' ? '● 加热中' : '● 维持中';
+      b.className   = 'badge ' + (d.state === 'HEATING' ? 'heating' : 'stop');
 
-      const badge = document.getElementById('badge-state');
-      badge.textContent = data.state === 'HEATING' ? '🔵 加热中' : '🟢 维持中';
-      badge.className   = 'badge ' + (data.state === 'HEATING' ? 'heating' : 'stop');
-
-      const labels = historyBuf.map(d => d.time);
-      charts.temp.data.labels = labels; charts.temp.data.datasets[0].data = historyBuf.map(d => d.temp);    charts.temp.update('none');
-      charts.hum.data.labels  = labels; charts.hum.data.datasets[0].data  = historyBuf.map(d => d.humidity); charts.hum.update('none');
-      charts.co2.data.labels  = labels; charts.co2.data.datasets[0].data  = historyBuf.map(d => d.co2);      charts.co2.update('none');
-
-    } catch(e) {
-      console.error('消息解析失败', e);
-    }
+      const labels = buf.map(x => x.time);
+      C.temp.data.labels = labels; C.temp.data.datasets[0].data = buf.map(x => x.temp);     C.temp.update('none');
+      C.hum.data.labels  = labels; C.hum.data.datasets[0].data  = buf.map(x => x.humidity); C.hum.update('none');
+      C.co2.data.labels  = labels; C.co2.data.datasets[0].data  = buf.map(x => x.co2);      C.co2.update('none');
+    } catch(e) { console.error(e); }
   });
 </script>
 </body>
