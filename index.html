@@ -218,6 +218,45 @@
     .chart-wrap      { position: relative; height: 120px; }
     .chart-box.wide .chart-wrap { height: 140px; }
 
+    /* ── Setpoint bar ── */
+    .setpoint-bar {
+      display: flex; align-items: center; gap: 10px;
+      margin-top: 14px;
+      background: #fff; border-radius: 14px;
+      padding: 16px 24px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 1px 4px rgba(0,0,0,.05);
+    }
+    .setpoint-bar-label {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.5px; color: #9ca3af;
+      text-transform: uppercase; flex-shrink: 0;
+    }
+    .sp-input {
+      width: 80px; border: 1.5px solid #e5e7eb;
+      border-radius: 8px; padding: 6px 10px;
+      font-size: 20px; font-weight: 700; color: #0a0a0a;
+      text-align: center; outline: none;
+      transition: border-color .2s;
+    }
+    .sp-input:focus { border-color: #2563eb; }
+    .sp-unit-label {
+      font-size: 14px; color: #9ca3af; flex-shrink: 0;
+    }
+    .sp-btn {
+      margin-left: auto;
+      background: #0a0a0a; color: #fff;
+      border: none; border-radius: 8px;
+      padding: 8px 22px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background .2s;
+    }
+    .sp-btn:hover { background: #1f2937; }
+    .sp-btn:disabled { background: #d1d5db; cursor: default; }
+    .sp-feedback {
+      font-size: 11px; color: #15803d;
+      font-weight: 600; min-width: 80px;
+    }
+
     /* ── Mobile ── */
     @media (max-width: 700px) {
       .hero      { padding: 28px 24px 28px; }
@@ -363,6 +402,15 @@
         <div class="card-value" id="val-pwm">--<span class="card-unit">%</span></div>
       </div>
     </div>
+
+    <!-- Setpoint control -->
+    <div class="setpoint-bar">
+      <span class="setpoint-bar-label">目标温度</span>
+      <input type="number" id="sp-input" class="sp-input" value="37.5" min="20" max="50" step="0.5">
+      <span class="sp-unit-label">°C</span>
+      <button id="sp-btn" class="sp-btn" disabled>设定</button>
+      <span id="sp-feedback" class="sp-feedback"></span>
+    </div>
   </div>
 
 </div>
@@ -446,11 +494,13 @@
     document.getElementById('conn-label').textContent = 'Live · EMQX 杭州';
     document.getElementById('o-text').textContent = 'WAITING FOR DATA...';
     client.subscribe('esp32s3/sensor_data');
+    document.getElementById('sp-btn').disabled = false;
   });
 
   client.on('reconnect', () => {
     setDot('');
     document.getElementById('conn-label').textContent = '再接続中...';
+    document.getElementById('sp-btn').disabled = true;
   });
 
   client.on('error', () => {
@@ -483,6 +533,15 @@
       C.hum.data.labels  = labels; C.hum.data.datasets[0].data  = buf.map(x => x.humidity); C.hum.update('none');
       C.co2.data.labels  = labels; C.co2.data.datasets[0].data  = buf.map(x => x.co2);      C.co2.update('none');
     } catch(e) { console.error(e); }
+  });
+
+  document.getElementById('sp-btn').addEventListener('click', () => {
+    const sp = parseFloat(document.getElementById('sp-input').value);
+    if (isNaN(sp) || sp < 20 || sp > 50) return;
+    client.publish('esp32s3/control', JSON.stringify({ setpoint: sp }), { qos: 1 });
+    const fb = document.getElementById('sp-feedback');
+    fb.textContent = `已发送 ${sp.toFixed(1)}°C`;
+    setTimeout(() => { fb.textContent = ''; }, 3000);
   });
 </script>
 <script>
