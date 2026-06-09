@@ -22,7 +22,7 @@
 
     /* ── Loading overlay ── */
     #overlay {
-      position: fixed; inset: 0; background: #0a0a0a;11
+      position: fixed; inset: 0; background: #0a0a0a;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       z-index: 300; transition: opacity .6s;
@@ -256,16 +256,25 @@
       font-size: 11px; color: #15803d;
       font-weight: 600; min-width: 80px;
     }
+    .sp-current {
+      font-size: 11px; color: #6b7280;
+      font-weight: 600; min-width: 120px;
+    }
 
     /* ── Mobile ── */
     @media (max-width: 700px) {
       .hero      { padding: 28px 24px 28px; }
       .live-page { display: flex; flex-direction: column; }
-      .deco-col  { padding: 28px 24px 20px; border-right: none; border-bottom: 1px solid #e5e7eb; min-height: unset; }
-      .tower-wrap { display: none; }
-      .cards-col  { padding: 20px 24px 28px; }
-      .card { padding: 20px 18px; }
+      .deco-col  { display: none; }
+      .cards-col  { padding: 20px 24px 16px; }
+      .cards {
+        height: auto;
+        grid-template-rows: auto auto;
+      }
+      .card { padding: 16px 18px; min-height: 100px; }
       .card-value { font-size: 40px; }
+      .setpoint-bar { padding: 12px 16px; gap: 8px; margin-top: 12px; }
+      .sp-input { width: 70px; font-size: 18px; }
       .trend-page { padding: 28px 24px 28px; }
       .charts { grid-template-columns: 1fr; }
       .chart-box.wide { grid-column: 1; }
@@ -408,6 +417,7 @@
       <span class="setpoint-bar-label">目标温度</span>
       <input type="number" id="sp-input" class="sp-input" value="37.5" min="20" max="50" step="0.5">
       <span class="sp-unit-label">°C</span>
+      <span id="sp-current" class="sp-current">当前: --°C</span>
       <button id="sp-btn" class="sp-btn" disabled>设定</button>
       <span id="sp-feedback" class="sp-feedback"></span>
     </div>
@@ -494,6 +504,8 @@
     document.getElementById('conn-label').textContent = 'Live · EMQX 杭州';
     document.getElementById('o-text').textContent = 'WAITING FOR DATA...';
     client.subscribe('esp32s3/sensor_data');
+    client.subscribe('esp32s3/control');
+    client.subscribe('esp32s3/control_ack');
     document.getElementById('sp-btn').disabled = false;
   });
 
@@ -509,9 +521,32 @@
     document.getElementById('o-text').textContent = 'CONNECTION FAILED';
   });
 
-  client.on('message', (_, payload) => {
+  client.on('message', (topic, payload) => {
     try {
       const d = JSON.parse(payload.toString());
+      if (topic === 'esp32s3/control') {
+        const fb = document.getElementById('sp-feedback');
+        if (typeof d.setpoint === 'number') {
+          fb.style.color = '#15803d';
+          fb.textContent = `Broker收到 ${d.setpoint.toFixed(1)}°C`;
+          setTimeout(() => { fb.textContent = ''; }, 1800);
+        }
+        return;
+      }
+
+      if (topic === 'esp32s3/control_ack') {
+        const fb = document.getElementById('sp-feedback');
+        if (d.accepted && typeof d.setpoint === 'number') {
+          fb.style.color = '#15803d';
+          fb.textContent = `ESP32确认 ${d.setpoint.toFixed(1)}°C`;
+        } else {
+          fb.style.color = '#dc2626';
+          fb.textContent = 'ESP32拒绝设定';
+        }
+        setTimeout(() => { fb.textContent = ''; }, 2500);
+        return;
+      }
+
       d.time = new Date().toLocaleTimeString('zh-CN');
       buf.push(d);
       if (buf.length > 120) buf.shift();
@@ -523,6 +558,12 @@
       document.getElementById('val-hum').innerHTML  = `${d.humidity?.toFixed(1)}<span class="card-unit">%</span>`;
       document.getElementById('val-co2').innerHTML  = `${d.co2}<span class="card-unit">ppm</span>`;
       document.getElementById('val-pwm').innerHTML  = `${d.pwm}<span class="card-unit">%</span>`;
+      if (typeof d.setpoint === 'number') {
+        document.getElementById('sp-current').textContent = `当前: ${d.setpoint.toFixed(1)}°C`;
+        if (document.activeElement !== document.getElementById('sp-input')) {
+          document.getElementById('sp-input').value = d.setpoint.toFixed(1);
+        }
+      }
 
       const b = document.getElementById('badge-state');
       b.textContent = d.state === 'HEATING' ? '● 加热中' : '● 维持中';
@@ -535,13 +576,63 @@
     } catch(e) { console.error(e); }
   });
 
-  document.getElementById('sp-btn').addEventListener('click', () => {
+  async function sendSetpointViaBridge(sp) {
+    const res = await fetch('/setpoint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setpoint: sp }),
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (!data.ok) {
+      throw new Error(data.error || 'setpoint rejected');
+    }
+  }
+
+  function sendSetpointViaMqtt(sp) {
+    return new Promise((resolve, reject) => {
+      if (!client.connected) {
+        reject(new Error('MQTT not connected'));
+        return;
+      }
+      client.publish('esp32s3/control', JSON.stringify({ setpoint: sp }), { qos: 1 }, err => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  document.getElementById('sp-btn').addEventListener('click', async () => {
     const sp = parseFloat(document.getElementById('sp-input').value);
     if (isNaN(sp) || sp < 20 || sp > 50) return;
-    client.publish('esp32s3/control', JSON.stringify({ setpoint: sp }), { qos: 1 });
+
     const fb = document.getElementById('sp-feedback');
-    fb.textContent = `已发送 ${sp.toFixed(1)}°C`;
-    setTimeout(() => { fb.textContent = ''; }, 3000);
+    const btn = document.getElementById('sp-btn');
+    btn.disabled = true;
+    fb.style.color = '#15803d';
+    fb.textContent = '发送中...';
+
+    try {
+      await sendSetpointViaBridge(sp);
+      fb.textContent = `上位机已发送 ${sp.toFixed(1)}°C`;
+    } catch (_) {
+      try {
+        await sendSetpointViaMqtt(sp);
+        fb.textContent = `MQTT已发送 ${sp.toFixed(1)}°C`;
+      } catch (err) {
+        fb.style.color = '#dc2626';
+        fb.textContent = '发送失败';
+        console.error(err);
+      }
+    } finally {
+      btn.disabled = !client.connected;
+      setTimeout(() => {
+        fb.textContent = '';
+        fb.style.color = '#15803d';
+      }, 3000);
+    }
   });
 </script>
 <script>
